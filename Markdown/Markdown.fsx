@@ -26,8 +26,6 @@ let parseInline = function
             parseInlineBody [] chars
     | _ -> None
 
-//"what's this `code` and" |> List.ofSeq |> parseInline
-
 let toString chars = 
     String(chars |> Array.ofList)
 
@@ -52,24 +50,34 @@ let parseBracketed opening closing = function
         parseBracketedBody closing [] chars
     | _ -> None
 
-let rec parseSpans acc chars = seq {
-    let emitLiteral = seq {
-        if acc <> [] then
-            yield acc |> List.rev |> toString |> Literal
-    }
-
-    match parseInline chars, chars with
-    | Some(body, chars), _ ->
-        yield! emitLiteral
-        yield body |> toString |> InlineCode
-        yield! parseSpans [] chars
-    | _, c::chars ->
-        yield! parseSpans (c::acc) chars
-    | _, [] ->
-        yield! emitLiteral
-}
-
 let (|Delimited|_|) delim = parseBracketed delim delim
 
-parseSpans [] ("what's this `code` and" |> List.ofSeq)
+let rec parseSpans acc chars = seq {
+    let emitLiteral = seq {
+      if acc <> [] then
+        yield acc |> List.rev |> toString |> Literal }
+    
+    match chars with
+    | Delimited ['`'] (body, chars) ->
+        yield! emitLiteral
+        yield InlineCode(toString body)
+        yield! parseSpans [] chars
+    | Delimited ['*'; '*' ] (body, chars)
+    | Delimited ['_'; '_' ] (body, chars) ->
+        yield! emitLiteral
+        yield Strong(parseSpans [] body |> List.ofSeq)
+        yield! parseSpans [] chars
+    | Delimited ['*' ] (body, chars)
+    | Delimited ['_' ] (body, chars) ->
+        yield! emitLiteral
+        yield Emphasis(parseSpans [] body |> List.ofSeq)
+        yield! parseSpans [] chars
+    | c::chars ->
+        yield! parseSpans (c::acc) chars
+    | [] ->
+        yield! emitLiteral }
+
+"what's this `code` *and* or _other_" |> List.ofSeq
+|> parseSpans []
 |> List.ofSeq
+
