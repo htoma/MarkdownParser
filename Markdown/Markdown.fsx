@@ -13,6 +13,7 @@ and MarkdownSpan =
 | Strong of MarkdownSpans
 | Emphasis of MarkdownSpans
 | HyperLink of MarkdownSpans * string
+| HardLineBreak
 
 let rec parseInlineBody acc = function
     | '`'::rest ->
@@ -57,6 +58,14 @@ let (|Bracketed|_|) opening closing = function
         parseBracketedBody closing [] chars
     | _ -> None
 
+let (|LineBreak|_|) = function
+    | StartsWith ['\r';'\n'] rest
+    | StartsWith ['\n';'\r'] rest
+    | StartsWith ['\r'] rest
+    | StartsWith ['\n'] rest ->
+        Some(rest)
+    | _ -> None
+
 let rec parseSpans acc chars = seq {
     let emitLiteral = seq {
       if acc <> [] then
@@ -70,6 +79,10 @@ let rec parseSpans acc chars = seq {
             yield HyperLink(parseSpans [] body |> List.ofSeq, toString inner)
             yield! parseSpans [] rest
         | _ -> yield! parseSpans (chars.Tail) chars
+    | LineBreak chars ->
+        yield! emitLiteral
+        yield HardLineBreak
+        yield! parseSpans [] chars
     | Delimited ['`'] (body, chars) ->
         yield! emitLiteral
         yield InlineCode(toString body)
@@ -93,3 +106,6 @@ let rec parseSpans acc chars = seq {
 |> parseSpans []
 |> List.ofSeq
 
+"hello \n\rworld \r!!!" |> List.ofSeq
+|> parseSpans []
+|> List.ofSeq
