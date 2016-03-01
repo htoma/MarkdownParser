@@ -52,12 +52,24 @@ let parseBracketed opening closing = function
 
 let (|Delimited|_|) delim = parseBracketed delim delim
 
+let (|Bracketed|_|) opening closing = function
+    | StartsWith opening chars ->
+        parseBracketedBody closing [] chars
+    | _ -> None
+
 let rec parseSpans acc chars = seq {
     let emitLiteral = seq {
       if acc <> [] then
         yield acc |> List.rev |> toString |> Literal }
     
     match chars with
+    | Bracketed ['['] [']'] (body,chars) ->
+        match chars with
+        | Bracketed ['('] [')'] (inner,rest) ->
+            yield! emitLiteral
+            yield HyperLink(parseSpans [] body |> List.ofSeq, toString inner)
+            yield! parseSpans [] rest
+        | _ -> yield! parseSpans (chars.Tail) chars
     | Delimited ['`'] (body, chars) ->
         yield! emitLiteral
         yield InlineCode(toString body)
@@ -77,7 +89,7 @@ let rec parseSpans acc chars = seq {
     | [] ->
         yield! emitLiteral }
 
-"what's this `code` *and* or _other_" |> List.ofSeq
+"[F# `home` page](http://fsharp.net) and other" |> List.ofSeq
 |> parseSpans []
 |> List.ofSeq
 
