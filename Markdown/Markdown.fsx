@@ -102,6 +102,67 @@ let rec parseSpans acc chars = seq {
     | [] ->
         yield! emitLiteral }
 
+module List =
+    let partitionWhile f =
+        let rec loop acc = function
+            | x::xs when f x -> loop (x::acc) xs
+            | xs -> List.rev acc, xs
+        loop []
+
+let (|PrefixedLines|) prefix (lines:list<string>) =
+    let prefixed, other =
+        lines |> List.partitionWhile (fun line ->
+            line.StartsWith(prefix))
+    [ for line in prefixed ->
+        line.Substring(prefix.Length)], other
+
+let (|LineSeparated|) lines =
+    let isWhite = System.String.IsNullOrWhiteSpace
+    match List.partitionWhile (isWhite >> not) lines with
+    | par, _::rest
+    | par, ([] as rest) -> par, rest
+
+let (|AsCharList|) (str:string) =
+    List.ofSeq str
+
+let (|Heading|_|) = function
+    | StartsWith ['#'; ' '] heading ->
+        Some(1, heading)
+    | StartsWith ['#'; '#'; ' '] heading ->
+        Some(2, heading)
+    | _ -> None
+        
+let rec parseBlocks lines = seq {
+    match lines with    
+    | AsCharList(Heading (size, heading))::lines ->
+        yield Heading(size, parseSpans [] heading |> List.ofSeq)
+        yield! parseBlocks lines
+    | PrefixedLines " " (body, lines) when body <> [] ->
+        yield CodeBlock(body)
+        yield! parseBlocks lines
+    | LineSeparated (body, lines) when body <> [] ->
+        let body = String.concat " " body |> List.ofSeq
+        yield Paragraph(parseSpans [] body |> List.ofSeq)
+        yield! parseBlocks lines   
+    | line::lines when System.String.IsNullOrWhiteSpace(line) ->
+        yield! parseBlocks lines
+    | _ -> () }
+
+let sample = """## Introducing F#
+F# is a _functional-first_ language,
+which looks like this:
+let msg = "world"
+printfn "hello %s!" msg
+This sample prints `hello world!`
+"""
+
+let sampleDoc =
+    sample.Split('\r', '\n') |> List.ofSeq
+    |> parseBlocks |> List.ofSeq
+   
+let (PrefixedLines "..." res) = ["1"; "...2"; "...3" ]
+printfn "%A" res
+
 "[F# `home` page](http://fsharp.net) and other" |> List.ofSeq
 |> parseSpans []
 |> List.ofSeq
@@ -109,3 +170,4 @@ let rec parseSpans acc chars = seq {
 "hello \n\rworld \r!!!" |> List.ofSeq
 |> parseSpans []
 |> List.ofSeq
+
